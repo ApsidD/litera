@@ -200,14 +200,17 @@ async def export_font(request: Request):
     ef = _edits_file(rel)
     if not ef.exists():
         return JSONResponse({"error": "no saved edits for this font"}, status_code=400)
+    fmt = body.get("format", "ttf")
+    if fmt not in ("ttf", "woff", "woff2"):
+        return JSONResponse({"error": "format must be ttf, woff or woff2"}, status_code=400)
     stem = src.stem
-    existing = sorted(EXPORTS_DIR.glob(f"{stem}_litera_v*.ttf"))
-    nums = [int(m.group(1)) for f in existing if (m := re.search(r"_v(\d+)\.ttf$", f.name))]
+    existing = sorted(EXPORTS_DIR.glob(f"{stem}_litera_v*"))
+    nums = [int(m.group(1)) for f in existing if (m := re.search(r"_v(\d+)\.(ttf|woff2?)$", f.name))]
     ver = (max(nums) + 1) if nums else 1
-    out = EXPORTS_DIR / f"{stem}_litera_v{ver:02d}.ttf"
+    out = EXPORTS_DIR / f"{stem}_litera_v{ver:02d}.{fmt}"
     proc = subprocess.run(
         [PYTHON, str(BASE_DIR / "fontops.py"),
-         "--font", str(src), "--edits", str(ef), "--out", str(out)],
+         "--font", str(src), "--edits", str(ef), "--out", str(out), "--format", fmt],
         capture_output=True, text=True, timeout=120,
     )
     if proc.returncode != 0 or not out.exists():
@@ -229,7 +232,8 @@ async def download(request: Request, file: str):
     p = EXPORTS_DIR / file
     if not p.is_file():
         return JSONResponse({"error": "no such export"}, status_code=404)
-    return FileResponse(p, media_type="font/ttf", filename=p.name)
+    media = {".ttf": "font/ttf", ".woff": "font/woff", ".woff2": "font/woff2"}.get(p.suffix.lower(), "application/octet-stream")
+    return FileResponse(p, media_type=media, filename=p.name)
 
 
 @app.post("/api/promote")
@@ -258,16 +262,33 @@ async def upload_font(request: Request, font: UploadFile = File(...)):
     if not _authed(request):
         return _deny()
     fname = Path(font.filename or "font.ttf").name
-    if Path(fname).suffix.lower() not in (".ttf", ".otf"):
-        return JSONResponse({"error": "only .ttf and .otf files"}, status_code=400)
+    suffix = Path(fname).suffix.lower()
+    if suffix not in (".ttf", ".otf", ".woff", ".woff2"):
+        return JSONResponse({"error": "supported: .ttf, .otf, .woff, .woff2"}, status_code=400)
     fname = re.sub(r"[^A-Za-z0-9._-]+", "_", fname)
     data = await font.read()
     if len(data) > 50 * 1024 * 1024:
         return JSONResponse({"error": "file too large"}, status_code=400)
-    dest = FONT_DIRS[0] / fname
+
+    stem = Path(fname).stem
+    if suffix in (".woff", ".woff2"):
+        # unpack web formats so the editor and fontops work with plain sfnt
+        import io
+        from fontTools.ttLib import TTFont as _TTFont
+        try:
+            f = _TTFont(io.BytesIO(data))
+            f.flavor = None
+            suffix = ".otf" if ("CFF " in f or "CFF2" in f) else ".ttf"
+            buf = io.BytesIO()
+            f.save(buf)
+            data = buf.getvalue()
+        except Exception as e:
+            return JSONResponse({"error": f"could not unpack {fname}: {e}"}, status_code=400)
+
+    dest = FONT_DIRS[0] / f"{stem}{suffix}"
     n = 2
     while dest.exists():
-        dest = FONT_DIRS[0] / f"{Path(fname).stem}-{n}{Path(fname).suffix}"
+        dest = FONT_DIRS[0] / f"{stem}-{n}{suffix}"
         n += 1
     dest.write_bytes(data)
     return JSONResponse({"ok": True, "path": dest.name})

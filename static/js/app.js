@@ -161,7 +161,7 @@ async function doExport() {
   try {
     const r = await fetch('api/export', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: state.fontPath }),
+      body: JSON.stringify({ path: state.fontPath, format: document.getElementById('export-fmt').value }),
     });
     const data = await r.json();
     if (!r.ok || data.error) {

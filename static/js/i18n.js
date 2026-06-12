@@ -46,7 +46,7 @@ const RU = {
   'guides on/off': 'направляющие вкл/выкл',
   'undo · Ctrl+Z': 'отменить · Ctrl+Z',
   'redo · Ctrl+Shift+Z': 'вернуть · Ctrl+Shift+Z',
-  'export TTF': 'экспорт TTF',
+  'export': 'экспорт',
   'make working': 'сделать рабочим',
   'replace the working font file with the fresh export': 'заменить рабочий файл шрифта свежим экспортом',
   'download': 'скачать',

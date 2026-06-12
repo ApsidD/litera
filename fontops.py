@@ -87,6 +87,7 @@ def main():
     ap.add_argument("--font", required=True)
     ap.add_argument("--edits", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--format", default="ttf", choices=["ttf", "woff", "woff2"])
     args = ap.parse_args()
 
     edits = json.loads(open(args.edits, encoding="utf-8").read())
@@ -194,6 +195,8 @@ def main():
         )
         addOpenTypeFeaturesFromString(font, fea)
 
+    if args.format in ("woff", "woff2"):
+        font.flavor = args.format
     font.save(args.out)
 
     print(json.dumps({
