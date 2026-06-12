@@ -69,7 +69,7 @@ Litera never touches your original font while you work. Edits live in `data/edit
 
 **Export TTF** applies this layer with fontTools (outlines are rebuilt only for glyphs that changed; kerning is compiled into GPOS) and writes a versioned file into `data/exports/`. **Make working** copies the export over the source font, backing the original up into `data/backups/`.
 
-Only TTF (glyf) fonts are supported for export; CFF/OTF can be viewed but not rebuilt yet.
+OTF (CFF) fonts are converted to TrueType outlines automatically on export, so both .ttf and .otf can be loaded and finished; exports are always .ttf.
 
 ## Importing a specimen sheet
 

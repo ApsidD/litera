@@ -22,11 +22,14 @@ export function initImporter(opts) {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !$('import').hidden) close();
   });
+  $('import').addEventListener('wheel', e => {
+    if (!e.target.closest('.zoom-box')) e.preventDefault();
+  }, { passive: false });
   syncCustom();
 }
 
-function open() { $('import').hidden = false; $('imp-status').textContent = ''; }
-function close() { $('import').hidden = true; }
+function open() { $('import').hidden = false; $('imp-status').textContent = ''; document.body.classList.add('modal-open'); }
+function close() { $('import').hidden = true; document.body.classList.remove('modal-open'); }
 
 function syncCustom() {
   const isCustom = $('imp-charset').value === 'custom';

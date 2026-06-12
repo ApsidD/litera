@@ -33,6 +33,55 @@ def transform_record(value, kx, ky, dx, dy):
     return out
 
 
+
+
+def otf_to_ttf(font, max_err=1.0):
+    """Convert CFF/OTF outlines to quadratic glyf in place (port of the fontTools otf2ttf snippet)."""
+    from fontTools.ttLib import newTable
+    from fontTools.pens.cu2quPen import Cu2QuPen
+    from fontTools.pens.ttGlyphPen import TTGlyphPen as _TTGlyphPen
+
+    glyph_order = font.getGlyphOrder()
+    glyph_set = font.getGlyphSet()
+    glyphs = {}
+    for name in glyph_order:
+        pen = _TTGlyphPen(glyph_set)
+        cu2qu = Cu2QuPen(pen, max_err=max_err, reverse_direction=True)
+        glyph_set[name].draw(cu2qu)
+        glyphs[name] = pen.glyph()
+
+    glyf = newTable("glyf")
+    glyf.glyphOrder = glyph_order
+    glyf.glyphs = glyphs
+    font["loca"] = newTable("loca")
+    font["glyf"] = glyf
+
+    maxp = font["maxp"]
+    maxp.tableVersion = 0x00010000
+    for attr in ("maxPoints", "maxContours", "maxCompositePoints", "maxCompositeContours",
+                 "maxComponentElements", "maxSizeOfInstructions"):
+        setattr(maxp, attr, 0)
+    maxp.maxZones = 1
+    maxp.maxTwilightPoints = 0
+    maxp.maxStorage = 0
+    maxp.maxFunctionDefs = 0
+    maxp.maxInstructionDefs = 0
+    maxp.maxStackElements = 0
+    maxp.maxComponentDepth = 0
+
+    post = font["post"]
+    post.formatType = 2.0
+    post.extraNames = []
+    post.mapping = {}
+    post.glyphOrder = glyph_order
+
+    for tag in ("CFF ", "CFF2", "VORG"):
+        if tag in font:
+            del font[tag]
+    font["head"].glyphDataFormat = 0
+    font.sfntVersion = "\x00\x01\x00\x00"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--font", required=True)
@@ -50,8 +99,11 @@ def main():
 
     font = TTFont(args.font)
     if "glyf" not in font:
-        print("CFF/OTF outlines are not supported yet, a TTF (glyf) is required", file=sys.stderr)
-        sys.exit(2)
+        if "CFF " in font or "CFF2" in font:
+            otf_to_ttf(font)
+        else:
+            print("unsupported font: no glyf and no CFF outlines", file=sys.stderr)
+            sys.exit(2)
 
     glyf = font["glyf"]
     hmtx = font["hmtx"]

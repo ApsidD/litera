@@ -204,7 +204,7 @@ async def export_font(request: Request):
     existing = sorted(EXPORTS_DIR.glob(f"{stem}_litera_v*.ttf"))
     nums = [int(m.group(1)) for f in existing if (m := re.search(r"_v(\d+)\.ttf$", f.name))]
     ver = (max(nums) + 1) if nums else 1
-    out = EXPORTS_DIR / f"{stem}_litera_v{ver:02d}{src.suffix}"
+    out = EXPORTS_DIR / f"{stem}_litera_v{ver:02d}.ttf"
     proc = subprocess.run(
         [PYTHON, str(BASE_DIR / "fontops.py"),
          "--font", str(src), "--edits", str(ef), "--out", str(out)],

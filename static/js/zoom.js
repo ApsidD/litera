@@ -118,6 +118,11 @@ export function initZoom() {
     if (e.key === 'Escape' && isOpen()) closeZoom();
   });
   window.addEventListener('resize', () => { if (isOpen()) paint(); });
+  new ResizeObserver(() => { if (isOpen()) paint(); }).observe($('zoom').querySelector('.zoom-box'));
+  // wheel over the backdrop must not scroll the page behind the modal
+  $('zoom').addEventListener('wheel', e => {
+    if (!e.target.closest('.zoom-box')) e.preventDefault();
+  }, { passive: false });
 
   // dragging directly on the canvas
   cv.addEventListener('pointerdown', e => {
@@ -167,6 +172,7 @@ export function openZoom() {
   const g = selGlyph(), p = selPair();
   if (!g && !p) return;
   $('zoom').hidden = false;
+  document.body.classList.add('modal-open');
   $('zoom-rows-glyph').style.display = g ? '' : 'none';
   $('zoom-rows-pair').style.display = p ? '' : 'none';
   $('zoom-hint').textContent = g
@@ -178,6 +184,7 @@ export function openZoom() {
 
 export function closeZoom() {
   $('zoom').hidden = true;
+  document.body.classList.remove('modal-open');
 }
 
 export function zoomChanged(kind) {
@@ -220,8 +227,9 @@ function paint() {
 
   // measure width from 100%, otherwise border-box eats 2px on every repaint
   cv.style.width = '100%';
+  cv.style.height = '';  // let flex compute the available height
   const cssW = cv.clientWidth || 800;
-  const cssH = Math.min(Math.round(window.innerHeight * 0.5), 480);
+  const cssH = Math.max(200, cv.clientHeight || Math.min(Math.round(window.innerHeight * 0.5), 480));
   const ctx = setupCanvas(cv, cssW, cssH);
   ctx.clearRect(0, 0, cssW, cssH);
 
