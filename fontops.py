@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Litera: applies a JSON layer of edits to a TTF and builds a new file.
+
+Edits:
+  global: scale, tracking, ascender, descender, lineGap, capHeight, xHeight
+  glyphs: { name: {s, dx, dy, dadv} }   (s = scale, dx/dy = shift in units, dadv = advance delta)
+  kerning: { "left right": value }      (units of the final font, GPOS kern)
+"""
+import argparse
+import json
+import sys
+
+from fontTools.ttLib import TTFont
+from fontTools.misc.roundTools import otRound
+from fontTools.pens.recordingPen import DecomposingRecordingPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+
+
+def transform_record(value, kx, ky, dx, dy):
+    """Transforms recorded pen commands: per-axis scale around (0,0), then shift. Rounds."""
+    out = []
+    for op, pts in value:
+        npts = []
+        for p in pts:
+            if p is None:
+                npts.append(None)
+            elif isinstance(p, tuple):
+                npts.append((otRound(p[0] * kx + dx), otRound(p[1] * ky + dy)))
+            else:
+                npts.append(p)
+        out.append((op, tuple(npts)))
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--font", required=True)
+    ap.add_argument("--edits", required=True)
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
+
+    edits = json.loads(open(args.edits, encoding="utf-8").read())
+    g_all = edits.get("global", {}) or {}
+    per_glyph = edits.get("glyphs", {}) or {}
+    kerning = edits.get("kerning", {}) or {}
+
+    S = float(g_all.get("scale", 1.0) or 1.0)
+    T = int(g_all.get("tracking", 0) or 0)
+
+    font = TTFont(args.font)
+    if "glyf" not in font:
+        print("CFF/OTF outlines are not supported yet, a TTF (glyf) is required", file=sys.stderr)
+        sys.exit(2)
+
+    glyf = font["glyf"]
+    hmtx = font["hmtx"]
+    glyph_set = font.getGlyphSet()
+    names = font.getGlyphOrder()
+
+    rebuilt = 0
+    adv_changed = 0
+    y_max_all, y_min_all = -10**9, 10**9
+
+    for name in names:
+        e = per_glyph.get(name, {}) or {}
+        u = S * float(e.get("s", 1.0) or 1.0)
+        kx = u * float(e.get("sx", 1.0) or 1.0)
+        ky = u * float(e.get("sy", 1.0) or 1.0)
+        dx = int(e.get("dx", 0) or 0)
+        dy = int(e.get("dy", 0) or 0)
+        dadv = int(e.get("dadv", 0) or 0)
+
+        base_adv, base_lsb = hmtx[name]
+        new_adv = max(0, otRound(base_adv * kx) + dadv + T)
+
+        glyph = glyf[name]
+        has_outline = glyph.numberOfContours != 0
+
+        if has_outline and (kx != 1.0 or ky != 1.0 or dx != 0 or dy != 0):
+            rec = DecomposingRecordingPen(glyph_set)
+            glyph_set[name].draw(rec)
+            pen = TTGlyphPen(None)
+            for op, pts in transform_record(rec.value, kx, ky, dx, dy):
+                getattr(pen, op)(*pts)
+            new_glyph = pen.glyph()
+            glyf[name] = new_glyph
+            glyph = new_glyph
+            rebuilt += 1
+
+        if glyph.numberOfContours != 0:
+            glyph.recalcBounds(glyf)
+            lsb = glyph.xMin
+            y_max_all = max(y_max_all, glyph.yMax)
+            y_min_all = min(y_min_all, glyph.yMin)
+        else:
+            lsb = 0
+
+        if (new_adv, lsb) != (base_adv, base_lsb):
+            adv_changed += 1
+        hmtx[name] = (new_adv, lsb)
+
+    # --- vertical metrics ---
+    hhea = font["hhea"]
+    os2 = font["OS/2"]
+    asc = int(g_all.get("ascender") or hhea.ascent)
+    desc = int(g_all.get("descender") if g_all.get("descender") is not None else hhea.descent)
+    if desc > 0:
+        desc = -desc
+    gap = int(g_all.get("lineGap") if g_all.get("lineGap") is not None else hhea.lineGap)
+    hhea.ascent, hhea.descent, hhea.lineGap = asc, desc, gap
+    os2.sTypoAscender, os2.sTypoDescender, os2.sTypoLineGap = asc, desc, gap
+    if y_max_all > -10**9:
+        os2.usWinAscent = max(asc, y_max_all, 0)
+        os2.usWinDescent = max(-desc, -y_min_all, 0)
+    else:
+        os2.usWinAscent, os2.usWinDescent = max(asc, 0), max(-desc, 0)
+    if g_all.get("capHeight") is not None and hasattr(os2, "sCapHeight"):
+        os2.sCapHeight = int(g_all["capHeight"])
+    if g_all.get("xHeight") is not None and hasattr(os2, "sxHeight"):
+        os2.sxHeight = int(g_all["xHeight"])
+
+    # --- kerning via GPOS ---
+    pairs = []
+    name_set = set(names)
+    for key, val in kerning.items():
+        v = otRound(val)
+        if not v:
+            continue
+        parts = key.split()
+        if len(parts) != 2:
+            continue
+        left, right = parts
+        if left in name_set and right in name_set:
+            pairs.append((left, right, v))
+    if pairs:
+        lines = "\n".join(f"    pos {l} {r} {v};" for l, r, v in sorted(pairs))
+        fea = (
+            "languagesystem DFLT dflt;\n"
+            "languagesystem latn dflt;\n\n"
+            "feature kern {\n" + lines + "\n} kern;\n"
+        )
+        addOpenTypeFeaturesFromString(font, fea)
+
+    font.save(args.out)
+
+    print(json.dumps({
+        "glyphs_total": len(names),
+        "glyphs_rebuilt": rebuilt,
+        "advances_changed": adv_changed,
+        "kern_pairs": len(pairs),
+        "ascender": asc, "descender": desc, "lineGap": gap,
+    }, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

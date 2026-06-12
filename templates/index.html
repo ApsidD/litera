@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Litera</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="static/css/litera.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">Litera<span class="sub" data-i18n="font finishing">font finishing</span></div>
+  <select id="font-select" title="font"></select>
+  <button id="btn-import" class="tbtn ghost" data-i18n="import sheet">import sheet</button>
+  <button id="btn-guides" class="tbtn on" data-i18n="guides" data-i18n-title="guides on/off">guides</button>
+  <button id="btn-undo" class="tbtn icon" data-i18n-title="undo · Ctrl+Z">&#8617;</button>
+  <button id="btn-redo" class="tbtn icon" data-i18n-title="redo · Ctrl+Shift+Z">&#8618;</button>
+  <span id="save-status">·</span>
+  <span class="spacer"></span>
+  <button id="btn-lang" class="tbtn icon" title="язык / language">RU</button>
+  <a id="dl-link" href="#" hidden data-i18n="download">download</a>
+  <button id="btn-export" class="tbtn primary" data-i18n="export TTF">export TTF</button>
+  <button id="btn-promote" class="tbtn warn" disabled data-i18n="make working" data-i18n-title="replace the working font file with the fresh export">make working</button>
+</header>
+
+<main>
+  <section id="left">
+    <div id="lines"></div>
+    <button id="btn-addline" class="tbtn ghost" data-i18n="+ line">+ line</button>
+
+    <div class="pairs-head">
+      <button id="btn-pairs" class="tbtn ghost" data-i18n="pair test">pair test</button>
+      <select id="pairs-nav" hidden></select>
+      <span class="pairs-size" hidden><span data-i18n="size">size</span> <span id="pairs-size"></span></span>
+    </div>
+    <div id="pairs" hidden></div>
+    <h3 class="sec-title" data-i18n="Glyphs">Glyphs</h3>
+    <div id="grid"></div>
+  </section>
+
+  <aside id="panel">
+    <div class="sec" id="sec-font">
+      <h3><span data-i18n="Font">Font</span> <button id="reset-font" class="mini" data-i18n="reset" data-i18n-title="reset font-level edits">reset</button></h3>
+      <div class="rows" id="rows-font"></div>
+    </div>
+
+    <div class="sec disabled" id="sec-glyph">
+      <h3><span data-i18n="Glyph">Glyph</span> <span id="glyph-title" class="mono ttl"></span> <button id="reset-glyph" class="mini" data-i18n="reset" data-i18n-title="reset glyph edits">reset</button></h3>
+      <div class="rows" id="rows-glyph"></div>
+      <div class="hint" id="glyph-hint" data-i18n="click a letter in the preview or the grid">click a letter in the preview or the grid</div>
+    </div>
+
+    <div class="sec disabled" id="sec-kern">
+      <h3><span data-i18n="Kerning">Kerning</span> <span id="kern-title" class="mono ttl"></span> <button id="kern-drop" class="mini" style="display:none" data-i18n="remove">remove</button></h3>
+      <div class="rows" id="rows-kern"></div>
+      <div id="kern-list"></div>
+      <div class="hint" data-i18n="click the gap between letters in the preview">click the gap between letters in the preview</div>
+    </div>
+
+    <div class="sec" id="sec-help">
+      <h3 data-i18n="How to drag">How to drag</h3>
+      <div class="hint" data-i18n="numbers are dragged with the mouse up and down · Shift is 10× coarser, Alt finer · click a number to type · wheel and arrow keys work too">numbers are dragged with the mouse up and down · Shift is 10× coarser, Alt finer · click a number to type · wheel and arrow keys work too</div>
+      <div class="hint" data-i18n="with a letter or pair selected: green = the letter’s own bearings, blue = kerning, red = overlap or negative">with a letter or pair selected: green = the letter’s own bearings, blue = kerning, red = overlap or negative</div>
+    </div>
+  </aside>
+</main>
+
+<div id="zoom" hidden>
+  <div class="zoom-back"></div>
+  <div class="zoom-box">
+    <div class="zoom-head">
+      <span id="zoom-title" class="mono"></span>
+      <span class="spacer"></span>
+      <button id="zoom-reset" class="mini" data-i18n="reset">reset</button>
+      <button id="zoom-close" class="mini" data-i18n="close">close</button>
+    </div>
+    <canvas id="zoom-cv"></canvas>
+    <div class="zoom-rows" id="zoom-rows-glyph"></div>
+    <div class="zoom-rows" id="zoom-rows-pair"></div>
+    <div class="hint" id="zoom-hint"></div>
+  </div>
+</div>
+
+<div id="import" hidden>
+  <div class="zoom-back"></div>
+  <div class="zoom-box imp-box">
+    <div class="zoom-head">
+      <span data-i18n="Import a specimen sheet">Import a specimen sheet</span>
+      <span class="spacer"></span>
+      <button id="imp-close" class="mini" data-i18n="close">close</button>
+    </div>
+    <div class="hint" data-i18n="A PNG with black characters on white, in reading order (rows, left to right). Characters must not touch.">A PNG with black characters on white, in reading order (rows, left to right). Characters must not touch.</div>
+    <div class="imp-rows">
+      <label><span data-i18n="Image">Image</span><input type="file" id="imp-file" accept="image/png,image/jpeg,image/webp"></label>
+      <label><span data-i18n="Font name">Font name</span><input type="text" id="imp-name" value="MyFont" spellcheck="false"></label>
+      <label><span data-i18n="Character set">Character set</span>
+        <select id="imp-charset">
+          <option value="latin" data-i18n="A–Z a–z 0–9">A–Z a–z 0–9</option>
+          <option value="caps" data-i18n="A–Z">A–Z</option>
+          <option value="lower" data-i18n="a–z">a–z</option>
+          <option value="full" data-i18n="full (letters, digits, punctuation)">full (letters, digits, punctuation)</option>
+          <option value="custom" data-i18n="custom">custom</option>
+        </select>
+      </label>
+      <label id="imp-custom-row"><span data-i18n="Characters in sheet order">Characters in sheet order</span><input type="text" id="imp-custom" value="" spellcheck="false"></label>
+      <label><span data-i18n="Threshold">Threshold</span><input type="number" id="imp-threshold" value="140" min="40" max="250"></label>
+      <label><span data-i18n="Italic angle">Italic angle</span><input type="number" id="imp-italic" value="0" min="-30" max="30" step="0.5"></label>
+    </div>
+    <div class="zoom-head">
+      <span id="imp-status" class="hint"></span>
+      <span class="spacer"></span>
+      <button id="imp-go" class="tbtn primary" data-i18n="Import">Import</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="static/vendor/opentype.min.js"></script>
+<script type="module" src="static/js/app.js"></script>
+</body>
+</html>
