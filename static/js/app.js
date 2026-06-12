@@ -241,6 +241,26 @@ function wire() {
   $('btn-addline').addEventListener('click', () => preview.addLine());
   $('btn-export').addEventListener('click', doExport);
   $('btn-lang').addEventListener('click', () => { toggleLang(); preview.scheduleRender(); });
+  $('btn-upload').addEventListener('click', () => $('font-file').click());
+  $('font-file').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('font', file);
+    setStatus(t('uploading…'));
+    try {
+      const r = await fetch('api/upload-font', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (!r.ok || data.error) throw new Error(data.error || 'HTTP ' + r.status);
+      await loadFontList();
+      $('font-select').value = data.path;
+      await loadFont(data.path);
+    } catch (err) {
+      toast(t('Upload failed:') + ' ' + err.message, true);
+      setStatus(t('error'));
+    }
+  });
   $('btn-promote').addEventListener('click', doPromote);
 
   document.addEventListener('keydown', e => {

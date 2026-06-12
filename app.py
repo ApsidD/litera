@@ -253,6 +253,26 @@ async def promote(request: Request):
     return JSONResponse({"ok": True, "backup": backup.name, "target": rel})
 
 
+@app.post("/api/upload-font")
+async def upload_font(request: Request, font: UploadFile = File(...)):
+    if not _authed(request):
+        return _deny()
+    fname = Path(font.filename or "font.ttf").name
+    if Path(fname).suffix.lower() not in (".ttf", ".otf"):
+        return JSONResponse({"error": "only .ttf and .otf files"}, status_code=400)
+    fname = re.sub(r"[^A-Za-z0-9._-]+", "_", fname)
+    data = await font.read()
+    if len(data) > 50 * 1024 * 1024:
+        return JSONResponse({"error": "file too large"}, status_code=400)
+    dest = FONT_DIRS[0] / fname
+    n = 2
+    while dest.exists():
+        dest = FONT_DIRS[0] / f"{Path(fname).stem}-{n}{Path(fname).suffix}"
+        n += 1
+    dest.write_bytes(data)
+    return JSONResponse({"ok": True, "path": dest.name})
+
+
 # ---------------- pair test ----------------
 
 def _builtin_pairtest():

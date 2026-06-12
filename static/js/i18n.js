@@ -69,6 +69,9 @@ const RU = {
     'числа тянутся мышью вверх-вниз · Shift в 10 раз грубее, Alt тоньше · клик по числу открывает ввод · колесо и стрелки тоже работают',
   'with a letter or pair selected: green = the letter\u2019s own bearings, blue = kerning, red = overlap or negative':
     'при выборе буквы или пары: зелёное = собственные отступы буквы, синее = кернинг, красное = заступ или минус',
+  'upload font': 'загрузить шрифт',
+  'uploading…': 'загружаю файл…',
+  'Upload failed:': 'Загрузка упала:',
   // import dialog
   'import sheet': 'импорт листа',
   'Import a specimen sheet': 'Импорт листа-спесимена',
