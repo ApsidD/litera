@@ -52,6 +52,8 @@ Everything is optional; the defaults run a local, open instance with `./fonts` a
 | `LITERA_PAIRTEST` | *(built-in)* | path to a custom pair-test text file |
 | `LITERA_PORT` | `8108` | port |
 | `SECRET_KEY` | random | session secret (set it if you use a password) |
+| `LITERA_SSO_SESSION` | *(off)* | set to `1` to trust a `session[\"user\"]` cookie issued by another app sharing the same `SECRET_KEY` (single sign-on behind one domain) |
+| `LITERA_LOGIN_URL` | `/` | where to send unauthenticated users in SSO mode |
 
 If you expose Litera to the internet, set `LITERA_PASSWORD` and `SECRET_KEY`, and put it behind HTTPS (a reverse proxy such as Caddy or nginx).
 

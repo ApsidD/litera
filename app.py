@@ -43,6 +43,10 @@ FONT_DIRS = [Path(p).expanduser().resolve()
 FONT_DIRS[0].mkdir(parents=True, exist_ok=True)
 
 PASSWORD = os.environ.get("LITERA_PASSWORD", "")
+# Advanced: trust a session["user"] set by another app sharing the same SECRET_KEY
+# (single sign-on behind one domain). Unauthenticated users are sent to LITERA_LOGIN_URL.
+SSO_SESSION = os.environ.get("LITERA_SSO_SESSION", "") == "1"
+LOGIN_URL = os.environ.get("LITERA_LOGIN_URL", "/")
 PAIRTEST_FILE = os.environ.get("LITERA_PAIRTEST", "")
 SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 PORT = int(os.environ.get("LITERA_PORT", 8108))
@@ -67,7 +71,7 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
 def _authed(request: Request) -> bool:
-    if not PASSWORD:
+    if not PASSWORD and not SSO_SESSION:
         return True
     return bool(request.session.get("user"))
 
@@ -90,6 +94,8 @@ button{background:#1F1D1A;color:#F4EFE6;cursor:pointer}.err{color:#B3402A;text-a
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     if not _authed(request):
+        if SSO_SESSION:
+            return RedirectResponse(LOGIN_URL, status_code=302)
         return HTMLResponse(LOGIN_HTML.replace("{err}", ""))
     html = (BASE_DIR / "templates" / "index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
