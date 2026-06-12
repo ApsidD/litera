@@ -575,3 +575,7 @@ main {
 body.modal-open { overflow: hidden; }
 #zoom .zoom-box { display: flex; flex-direction: column; resize: both; overflow: hidden; min-width: 340px; min-height: 340px; max-width: 96vw; max-height: 94vh; }
 #zoom-cv { flex: 1 1 auto; min-height: 180px; width: 100%; }
+
+/* weight sync buttons */
+.wsync { margin-top: 8px; }
+.wsync-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }

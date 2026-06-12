@@ -26,13 +26,14 @@ export function paramsFor(name) {
     dx: e.dx | 0,
     dy: e.dy | 0,
     dadv: e.dadv | 0,
+    w: e.w | 0,
   };
 }
 
 export function effAdvance(glyph) {
   const p = paramsFor(glyph.name);
   const t = state.edits.global.tracking | 0;
-  return Math.max(0, Math.round((glyph.advanceWidth || 0) * p.kx) + p.dadv + t);
+  return Math.max(0, Math.round((glyph.advanceWidth || 0) * p.kx) + p.dadv + t + p.w);
 }
 
 export function kernKey(l, r) { return l + ' ' + r; }
@@ -96,8 +97,68 @@ export function fillGlyph(ctx, item, ox, oy, s, color) {
   ctx.translate(ox, oy);
   ctx.scale(s, -s);
   ctx.fillStyle = color;
-  ctx.fill(glyphPath2D(glyph, kx, ky, dx, dy));
+  const p2d = glyphPath2D(glyph, kx, ky, dx, dy);
+  ctx.fill(p2d);
+  // live weight preview: stroke the same path on top (real geometry is built on export)
+  const w = item.w | 0;
+  if (w) {
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (w > 0) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = w;
+      ctx.stroke(p2d);
+    } else {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineWidth = -w;
+      ctx.stroke(p2d);
+    }
+  }
   ctx.restore();
+}
+
+// Estimated stroke thickness in units: 2 * |net area| / outline length.
+// Net area under nonzero winding subtracts the counters, so the ratio
+// approximates the average stroke width of a letterform.
+export function strokeWeightEst(name) {
+  const g = state.nameMap[name];
+  if (!g || !g.path || !g.path.commands.length) return null;
+  const p = paramsFor(name);
+  let area = 0, len = 0;
+  let sx = 0, sy = 0, lx = 0, ly = 0, has = false;
+  const seg = (x, y) => {
+    area += (lx * y - x * ly) / 2;
+    len += Math.hypot(x - lx, y - ly);
+    lx = x; ly = y;
+  };
+  const tx = c => c * p.kx, ty = c => c * p.ky;
+  for (const c of g.path.commands) {
+    if (c.type === 'M') {
+      if (has) seg(sx, sy);
+      lx = sx = tx(c.x); ly = sy = ty(c.y); has = true;
+    } else if (c.type === 'L') {
+      seg(tx(c.x), ty(c.y));
+    } else if (c.type === 'Q') {
+      const x0 = lx, y0 = ly;
+      for (let i = 1; i <= 8; i++) {
+        const t = i / 8, mt = 1 - t;
+        seg(mt * mt * x0 + 2 * mt * t * tx(c.x1) + t * t * tx(c.x),
+            mt * mt * y0 + 2 * mt * t * ty(c.y1) + t * t * ty(c.y));
+      }
+    } else if (c.type === 'C') {
+      const x0 = lx, y0 = ly;
+      for (let i = 1; i <= 12; i++) {
+        const t = i / 12, mt = 1 - t;
+        seg(mt ** 3 * x0 + 3 * mt * mt * t * tx(c.x1) + 3 * mt * t * t * tx(c.x2) + t ** 3 * tx(c.x),
+            mt ** 3 * y0 + 3 * mt * mt * t * ty(c.y1) + 3 * mt * t * t * ty(c.y2) + t ** 3 * ty(c.y));
+      }
+    } else if (c.type === 'Z') {
+      seg(sx, sy);
+    }
+  }
+  if (has) seg(sx, sy);
+  if (len < 1) return null;
+  return Math.abs(area) * 2 / len;
 }
 
 // Selection highlight: advance frame, glyph bearings (green = air,

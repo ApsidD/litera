@@ -123,20 +123,33 @@ def main():
         dx = int(e.get("dx", 0) or 0)
         dy = int(e.get("dy", 0) or 0)
         dadv = int(e.get("dadv", 0) or 0)
+        w = int(e.get("w", 0) or 0)
 
         base_adv, base_lsb = hmtx[name]
-        new_adv = max(0, otRound(base_adv * kx) + dadv + T)
+        new_adv = max(0, otRound(base_adv * kx) + dadv + T + w)
 
         glyph = glyf[name]
         has_outline = glyph.numberOfContours != 0
 
-        if has_outline and (kx != 1.0 or ky != 1.0 or dx != 0 or dy != 0):
+        if has_outline and (kx != 1.0 or ky != 1.0 or dx != 0 or dy != 0 or w != 0):
             rec = DecomposingRecordingPen(glyph_set)
             glyph_set[name].draw(rec)
-            pen = TTGlyphPen(None)
-            for op, pts in transform_record(rec.value, kx, ky, dx, dy):
+            rec_value = rec.value
+            if w != 0:
+                from reweight import reweight_record
+                rec_value = reweight_record(rec_value, w)
+            if w != 0:
+                # re-traced outlines are cubic; convert to quadratic for glyf
+                from fontTools.pens.cu2quPen import Cu2QuPen
+                tt = TTGlyphPen(None)
+                pen = Cu2QuPen(tt, max_err=1.0)
+                out_pen = tt
+            else:
+                pen = TTGlyphPen(None)
+                out_pen = pen
+            for op, pts in transform_record(rec_value, kx, ky, dx, dy):
                 getattr(pen, op)(*pts)
-            new_glyph = pen.glyph()
+            new_glyph = out_pen.glyph()
             glyf[name] = new_glyph
             glyph = new_glyph
             rebuilt += 1

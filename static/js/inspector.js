@@ -1,7 +1,7 @@
 // Litera: right panel — all scrub parameters for the font, the glyph and kerning
 import { state, glyphEdit, gscale, metric, emit } from './state.js';
 import { makeScrub, refreshScrubs } from './scrub.js';
-import { paramsFor, effAdvance, unitBox, kernKey, baseKern, effKern } from './render.js';
+import { paramsFor, effAdvance, unitBox, kernKey, baseKern, effKern, strokeWeightEst } from './render.js';
 import * as H from './history.js';
 import { t } from './i18n.js';
 
@@ -70,6 +70,28 @@ export function initInspector() {
     done();
   });
 
+  // --- weight sync: match the stroke weight across a group of glyphs ---
+  const wsync = document.createElement('div');
+  wsync.className = 'rows wsync';
+  const wlab = document.createElement('div');
+  wlab.className = 'hint';
+  wlab.textContent = t('sync weight');
+  wsync.appendChild(wlab);
+  const wbtns = document.createElement('div');
+  wbtns.className = 'wsync-btns';
+  const mkBtn = (label, filter) => {
+    const b = document.createElement('button');
+    b.className = 'mini';
+    b.textContent = label;
+    b.addEventListener('click', () => syncWeight(filter));
+    wbtns.appendChild(b);
+  };
+  mkBtn(t('caps'), u => u >= 65 && u <= 90);
+  mkBtn(t('lowercase'), u => u >= 97 && u <= 122);
+  mkBtn(t('all glyphs'), () => true);
+  wsync.appendChild(wbtns);
+  document.getElementById('sec-font').appendChild(wsync);
+
   // --- glyph ---
   const rg = $('rows-glyph');
 
@@ -95,6 +117,12 @@ export function initInspector() {
     get: () => glyphEdit(selGlyph()).dy | 0,
     set: v => { glyphEdit(selGlyph(), true).dy = v; },
     step: 0.5, min: -1000, max: 1000, nudge: 1,
+    enabled: () => !!selGlyph(), onBegin: begin, onLive: live, onCommit: done,
+  });
+  makeScrub(row(rg, t('weight')), {
+    get: () => glyphEdit(selGlyph()).w | 0,
+    set: v => { glyphEdit(selGlyph(), true).w = v; },
+    step: 0.3, min: -120, max: 120, nudge: 1,
     enabled: () => !!selGlyph(), onBegin: begin, onLive: live, onCommit: done,
   });
 
@@ -165,6 +193,31 @@ export function initInspector() {
     delete state.edits.kerning[kernKey(p.left, p.right)];
     done();
   });
+}
+
+function syncWeight(filter) {
+  if (!state.font) return;
+  const items = [];
+  for (const [name, g] of Object.entries(state.nameMap)) {
+    if (!g.unicode || !filter(g.unicode)) continue;
+    const est = strokeWeightEst(name);
+    if (est == null || est < 1) continue;
+    items.push({ name, cur: est + (glyphEdit(name).w | 0) });
+  }
+  if (items.length < 2) return;
+  const sorted = items.map(x => x.cur).sort((a, b) => a - b);
+  const target = sorted[Math.floor(sorted.length / 2)];
+  H.capture();
+  let n = 0;
+  for (const it of items) {
+    const d = Math.round(target - it.cur);
+    if (Math.abs(d) < 2) continue;
+    const e = glyphEdit(it.name, true);
+    e.w = Math.max(-120, Math.min(120, (e.w | 0) + d));
+    n++;
+  }
+  H.commit();
+  emit('edits');
 }
 
 export function refreshInspector() {

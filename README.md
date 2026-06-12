@@ -14,6 +14,7 @@ See [GUIDE.md](GUIDE.md) for the full playbook, including ready-to-use prompts f
 - **Scrub controls**: every number is draggable. Shift = 10× coarser, Alt = finer, click to type, wheel and arrow keys work too.
 - **Zoom view** (double click): drag the letter itself — horizontal movement edits the left bearing, vertical movement edits the position; for a pair, dragging edits the kerning.
 - **Glyph grid** with edit markers and full vertical guides per cell.
+- **Stroke weight**: a per-glyph weight slider (true geometric thickening/thinning via a raster round-trip on export, live approximation in the preview), plus one-click weight equalization across capitals, lowercase or all glyphs.
 - **Pair test**: a built-in feed of systematic spacing tests (every letter between every neighbor), virtualized so thousands of lines stay fast.
 - **Non-destructive edits**: everything is stored as a JSON layer next to the original font, with undo/redo and autosave. Export builds a new versioned TTF; "make working" swaps it in with an automatic backup.
 - **Specimen sheet import**: upload a PNG of characters (drawn, generated, or scanned), and Litera segments it, traces it with potrace, and builds a TTF you can immediately start finishing.

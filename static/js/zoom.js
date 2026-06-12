@@ -53,20 +53,20 @@ function glyphScrub(parent, lbl, key) {
   makeScrub(val, {
     get: () => {
       const e = glyphEdit(selGlyph());
-      if (key === 'dy') return e.dy | 0;
+      if (key === 'dy' || key === 'w') return e[key] | 0;
       return (e[key] == null ? 1 : e[key]) * 100;
     },
     set: v => {
       const e = glyphEdit(selGlyph(), true);
-      if (key === 'dy') e.dy = v;
+      if (key === 'dy' || key === 'w') e[key] = v;
       else e[key] = v / 100;
     },
-    step: key === 'dy' ? 0.5 : 0.2,
-    min: key === 'dy' ? -1000 : 10,
-    max: key === 'dy' ? 1000 : 400,
-    decimals: key === 'dy' ? 0 : 1,
-    suffix: key === 'dy' ? '' : ' %',
-    nudge: key === 'dy' ? 1 : 0.5,
+    step: key === 'dy' ? 0.5 : (key === 'w' ? 0.3 : 0.2),
+    min: key === 'dy' ? -1000 : (key === 'w' ? -120 : 10),
+    max: key === 'dy' ? 1000 : (key === 'w' ? 120 : 400),
+    decimals: (key === 'dy' || key === 'w') ? 0 : 1,
+    suffix: (key === 'dy' || key === 'w') ? '' : ' %',
+    nudge: (key === 'dy' || key === 'w') ? 1 : 0.5,
     enabled: () => isOpen() && !!selGlyph(),
     onBegin: begin, onLive: live, onCommit: done,
   });
@@ -80,6 +80,7 @@ export function initZoom() {
   glyphScrub(rg, t('width'), 'sx');
   glyphScrub(rg, t('height'), 'sy');
   glyphScrub(rg, t('shift Y'), 'dy');
+  glyphScrub(rg, t('weight'), 'w');
 
   const rk = $('zoom-rows-pair');
   const r = document.createElement('div');
