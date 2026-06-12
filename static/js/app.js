@@ -263,9 +263,23 @@ function wire() {
   });
   $('btn-promote').addEventListener('click', doPromote);
 
+  // click on empty space clears the selection
+  document.addEventListener('pointerdown', e => {
+    if (!state.sel) return;
+    const el = e.target;
+    if (el.closest && el.closest('canvas, .cell, .kern-item, .prow, .scrub, .scrub-input, button, select, input, a, label, #zoom, #import, .line-head')) return;
+    state.sel = null;
+    emit('selection');
+  });
+
   document.addEventListener('keydown', e => {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'Escape' && state.sel && document.getElementById('zoom').hidden) {
+      state.sel = null;
+      emit('selection');
+      return;
+    }
     if (!(e.ctrlKey || e.metaKey)) return;
     const k = e.key.toLowerCase();
     if (k === 'z') {
