@@ -428,8 +428,9 @@ async def manifest():
         "background_color": "#F4EFE6",
         "theme_color": "#F4EFE6",
         "icons": [
-            {"src": "./icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable"},
-            {"src": "./icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable"},
+            {"src": "./static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "./static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+            {"src": "./icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any"},
         ],
     })
 
