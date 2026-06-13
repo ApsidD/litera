@@ -70,27 +70,33 @@ export function initInspector() {
     done();
   });
 
-  // --- weight sync: match the stroke weight across a group of glyphs ---
-  const wsync = document.createElement('div');
-  wsync.className = 'rows wsync';
-  const wlab = document.createElement('div');
-  wlab.className = 'hint';
-  wlab.textContent = t('sync weight');
-  wsync.appendChild(wlab);
-  const wbtns = document.createElement('div');
-  wbtns.className = 'wsync-btns';
-  const mkBtn = (label, filter) => {
-    const b = document.createElement('button');
-    b.className = 'mini';
-    b.textContent = label;
-    b.addEventListener('click', () => syncWeight(filter));
-    wbtns.appendChild(b);
+  // --- weight sync: even out stem (horizontal) or bar (vertical) weight ---
+  const groups = [
+    [t('caps'), u => u >= 65 && u <= 90],
+    [t('lowercase'), u => u >= 97 && u <= 122],
+    [t('all glyphs'), () => true],
+  ];
+  const mkSyncRow = (axis, labelKey) => {
+    const wsync = document.createElement('div');
+    wsync.className = 'rows wsync';
+    const wlab = document.createElement('div');
+    wlab.className = 'hint';
+    wlab.textContent = t(labelKey);
+    wsync.appendChild(wlab);
+    const wbtns = document.createElement('div');
+    wbtns.className = 'wsync-btns';
+    for (const [label, filter] of groups) {
+      const b = document.createElement('button');
+      b.className = 'mini';
+      b.textContent = label;
+      b.addEventListener('click', () => syncWeight(filter, axis));
+      wbtns.appendChild(b);
+    }
+    wsync.appendChild(wbtns);
+    document.getElementById('sec-font').appendChild(wsync);
   };
-  mkBtn(t('caps'), u => u >= 65 && u <= 90);
-  mkBtn(t('lowercase'), u => u >= 97 && u <= 122);
-  mkBtn(t('all glyphs'), () => true);
-  wsync.appendChild(wbtns);
-  document.getElementById('sec-font').appendChild(wsync);
+  mkSyncRow('h', 'sync weight: horizontal');
+  mkSyncRow('v', 'sync weight: vertical');
 
   // --- glyph ---
   const rg = $('rows-glyph');
@@ -119,9 +125,19 @@ export function initInspector() {
     step: 0.5, min: -1000, max: 1000, nudge: 1,
     enabled: () => !!selGlyph(), onBegin: begin, onLive: live, onCommit: done,
   });
-  makeScrub(row(rg, t('weight')), {
-    get: () => glyphEdit(selGlyph()).w | 0,
-    set: v => { glyphEdit(selGlyph(), true).w = v; },
+  const wget = (key) => {
+    const e = glyphEdit(selGlyph());
+    return e[key] == null ? (e.w | 0) : (e[key] | 0);
+  };
+  makeScrub(row(rg, t('weight: horizontal')), {
+    get: () => wget('wh'),
+    set: v => { const e = glyphEdit(selGlyph(), true); e.wh = v; if (e.w != null) { e.wv = e.wv == null ? (e.w | 0) : e.wv; delete e.w; } },
+    step: 0.3, min: -120, max: 120, nudge: 1,
+    enabled: () => !!selGlyph(), onBegin: begin, onLive: live, onCommit: done,
+  });
+  makeScrub(row(rg, t('weight: vertical')), {
+    get: () => wget('wv'),
+    set: v => { const e = glyphEdit(selGlyph(), true); e.wv = v; if (e.w != null) { e.wh = e.wh == null ? (e.w | 0) : e.wh; delete e.w; } },
     step: 0.3, min: -120, max: 120, nudge: 1,
     enabled: () => !!selGlyph(), onBegin: begin, onLive: live, onCommit: done,
   });
@@ -195,26 +211,34 @@ export function initInspector() {
   });
 }
 
-function syncWeight(filter) {
+function syncWeight(filter, axis) {
+  // axis 'h' = stems (controls wh), 'v' = bars (controls wv)
   if (!state.font) return;
+  const key = axis === 'v' ? 'wv' : 'wh';
   const items = [];
   for (const [name, g] of Object.entries(state.nameMap)) {
     if (!g.unicode || !filter(g.unicode)) continue;
-    const est = strokeWeightEst(name);
+    const est = strokeWeightEst(name, axis);
     if (est == null || est < 1) continue;
-    items.push({ name, cur: est + (glyphEdit(name).w | 0) });
+    const e = glyphEdit(name);
+    const cur = e[key] == null ? (e.w | 0) : (e[key] | 0);
+    items.push({ name, cur: est + cur });
   }
   if (items.length < 2) return;
   const sorted = items.map(x => x.cur).sort((a, b) => a - b);
   const target = sorted[Math.floor(sorted.length / 2)];
   H.capture();
-  let n = 0;
   for (const it of items) {
     const d = Math.round(target - it.cur);
     if (Math.abs(d) < 2) continue;
     const e = glyphEdit(it.name, true);
-    e.w = Math.max(-120, Math.min(120, (e.w | 0) + d));
-    n++;
+    const cur = e[key] == null ? (e.w | 0) : (e[key] | 0);
+    e[key] = Math.max(-120, Math.min(120, cur + d));
+    if (e.w != null) {  // migrate legacy isotropic value
+      const other = axis === 'v' ? 'wh' : 'wv';
+      if (e[other] == null) e[other] = e.w | 0;
+      delete e.w;
+    }
   }
   H.commit();
   emit('edits');

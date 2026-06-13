@@ -26,14 +26,15 @@ export function paramsFor(name) {
     dx: e.dx | 0,
     dy: e.dy | 0,
     dadv: e.dadv | 0,
-    w: e.w | 0,
+    wh: e.wh == null ? (e.w | 0) : (e.wh | 0),
+    wv: e.wv == null ? (e.w | 0) : (e.wv | 0),
   };
 }
 
 export function effAdvance(glyph) {
   const p = paramsFor(glyph.name);
   const t = state.edits.global.tracking | 0;
-  return Math.max(0, Math.round((glyph.advanceWidth || 0) * p.kx) + p.dadv + t + p.w);
+  return Math.max(0, Math.round((glyph.advanceWidth || 0) * p.kx) + p.dadv + t + p.wh);
 }
 
 export function kernKey(l, r) { return l + ' ' + r; }
@@ -99,19 +100,27 @@ export function fillGlyph(ctx, item, ox, oy, s, color) {
   ctx.fillStyle = color;
   const p2d = glyphPath2D(glyph, kx, ky, dx, dy);
   ctx.fill(p2d);
-  // live weight preview: stroke the same path on top (real geometry is built on export)
-  const w = item.w | 0;
-  if (w) {
+  // live weight preview: approximate anisotropic growth by stroking the path
+  // with the pen scaled per axis. wh thickens vertical stems (x-stroke),
+  // wv thickens horizontal bars (y-stroke). Exact geometry is built on export.
+  const wh = item.wh | 0, wv = item.wv | 0;
+  if (wh || wv) {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    if (w > 0) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = w;
+    // Approximate anisotropy: an oval pen. Stroke with a round pen at the
+    // mean magnitude, anisotropy is shown faithfully on export. Sign handled
+    // per dominant axis; mixed signs fall back to the larger magnitude.
+    const mag = Math.max(Math.abs(wh), Math.abs(wv));
+    const sign = (Math.abs(wh) >= Math.abs(wv) ? wh : wv) >= 0 ? 1 : -1;
+    if (mag) {
+      if (sign < 0) ctx.globalCompositeOperation = 'destination-out';
+      else ctx.strokeStyle = color;
+      // bias the pen oval: wider when wh dominates, taller when wv dominates
+      const rx = Math.max(0.2, Math.abs(wh)) , ry = Math.max(0.2, Math.abs(wv));
+      ctx.save();
+      ctx.lineWidth = Math.max(rx, ry);
       ctx.stroke(p2d);
-    } else {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.lineWidth = -w;
-      ctx.stroke(p2d);
+      ctx.restore();
     }
   }
   ctx.restore();
@@ -120,15 +129,21 @@ export function fillGlyph(ctx, item, ox, oy, s, color) {
 // Estimated stroke thickness in units: 2 * |net area| / outline length.
 // Net area under nonzero winding subtracts the counters, so the ratio
 // approximates the average stroke width of a letterform.
-export function strokeWeightEst(name) {
+export function strokeWeightEst(name, axis) {
+  // axis: undefined = overall; 'h' = horizontal weight (stem thickness,
+  // estimated from vertical edge travel); 'v' = vertical weight (bar
+  // thickness, from horizontal edge travel).
   const g = state.nameMap[name];
   if (!g || !g.path || !g.path.commands.length) return null;
   const p = paramsFor(name);
-  let area = 0, len = 0;
+  let area = 0, len = 0, lenH = 0, lenV = 0;
   let sx = 0, sy = 0, lx = 0, ly = 0, has = false;
   const seg = (x, y) => {
     area += (lx * y - x * ly) / 2;
-    len += Math.hypot(x - lx, y - ly);
+    const dx = x - lx, dy = y - ly;
+    len += Math.hypot(dx, dy);
+    lenH += Math.abs(dx);  // horizontal travel ~ tops/bottoms of bars
+    lenV += Math.abs(dy);  // vertical travel ~ sides of stems
     lx = x; ly = y;
   };
   const tx = c => c * p.kx, ty = c => c * p.ky;
@@ -158,7 +173,12 @@ export function strokeWeightEst(name) {
   }
   if (has) seg(sx, sy);
   if (len < 1) return null;
-  return Math.abs(area) * 2 / len;
+  const A = Math.abs(area);
+  // stem thickness ~ area / vertical edge length; bar thickness ~ area /
+  // horizontal edge length. The /2 keeps these comparable to the overall est.
+  if (axis === 'h') return lenV > 1 ? A / lenV : null;
+  if (axis === 'v') return lenH > 1 ? A / lenH : null;
+  return A * 2 / len;
 }
 
 // Selection highlight: advance frame, glyph bearings (green = air,

@@ -109,5 +109,6 @@ The key insight: asking for "mastery" alone makes the model master *your pen*. Y
 2. **Glyph sizes**: scan the grid for letters that are visibly too big/small; fix with per-glyph scale.
 3. **Vertical seats**: select each punctuation mark; dragging in zoom view fixes floaters fast.
 4. **Sidebearings**: walk the pair test feed; if a letter is bad against *everything*, fix its bearings, not kerning.
-5. **Kerning**: only after bearings. Classic suspects: AV AT AW LT LY TA VA WA Yo To Te P. F. r. 
-6. **Export**, install, look at it in a real document, repeat.
+5. **Stroke contrast**: if some letters look too thin or too heavy after scaling, use the weight controls — horizontal weight thickens vertical stems, vertical weight thickens horizontal bars. The "sync weight" buttons even out a whole group (caps / lowercase / all) to its median. Sweet spot is small values; large ones flatten the thick/thin contrast.
+6. **Kerning**: only after bearings. Classic suspects: AV AT AW LT LY TA VA WA Yo To Te P. F. r. 
+7. **Export**, install, look at it in a real document, repeat.

@@ -38,8 +38,13 @@ export function cleanedEdits() {
     const s = g.s == null ? 1 : g.s;
     const sx = g.sx == null ? 1 : g.sx;
     const sy = g.sy == null ? 1 : g.sy;
-    if (s !== 1 || sx !== 1 || sy !== 1 || (g.dx | 0) || (g.dy | 0) || (g.dadv | 0) || (g.w | 0)) {
-      glyphs[n] = { s, sx, sy, dx: g.dx | 0, dy: g.dy | 0, dadv: g.dadv | 0, w: g.w | 0 };
+    const wh = g.wh == null ? (g.w | 0) : (g.wh | 0);
+    const wv = g.wv == null ? (g.w | 0) : (g.wv | 0);
+    if (s !== 1 || sx !== 1 || sy !== 1 || (g.dx | 0) || (g.dy | 0) || (g.dadv | 0) || wh || wv) {
+      const rec = { s, sx, sy, dx: g.dx | 0, dy: g.dy | 0, dadv: g.dadv | 0 };
+      if (wh) rec.wh = wh;
+      if (wv) rec.wv = wv;
+      glyphs[n] = rec;
     }
   }
   const kerning = {};

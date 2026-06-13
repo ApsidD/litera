@@ -1,8 +1,9 @@
 """Litera: change the stroke weight of a glyph outline.
 
-Approach: rasterize the outline, grow/shrink the ink morphologically
-(true Euclidean distance, so strokes thicken evenly in all directions),
-then re-trace with potrace back into cubic curves.
+Approach: rasterize the outline, grow/shrink the ink morphologically,
+then re-trace with potrace back into cubic curves. The growth can be
+anisotropic: a horizontal amount thickens vertical stems (growth along x)
+and a vertical amount thickens horizontal bars and serifs (growth along y).
 
 Requires numpy, scipy, Pillow, svgpathtools and the `potrace` binary —
 the same dependencies as the specimen sheet importer.
@@ -90,13 +91,24 @@ def _signed_area(c):
     return s / 2
 
 
-def reweight_record(value, w_units):
+def reweight_record(value, wh_units, wv_units=None):
     """Take recorded (decomposed) pen commands, return new CUBIC commands
-    with the stroke weight changed by w_units (positive = bolder)."""
+    with the stroke weight changed (positive = bolder).
+
+    wh_units: horizontal growth in font units -> thickens vertical stems.
+    wv_units: vertical growth in font units -> thickens horizontal bars.
+              defaults to wh_units (isotropic) when not given.
+    Positive grows, negative shrinks; the two axes are independent and may
+    have different signs."""
     import numpy as np
     from PIL import Image, ImageDraw
     from scipy import ndimage
     from svgpathtools import parse_path, Line, CubicBezier, QuadraticBezier
+
+    if wv_units is None:
+        wv_units = wh_units
+    if not wh_units and not wv_units:
+        return value
 
     contours = _flatten(value)
     if not contours:
@@ -105,7 +117,7 @@ def reweight_record(value, w_units):
     xs = [p[0] for c in contours for p in c]
     ys = [p[1] for c in contours for p in c]
     minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
-    pad_u = abs(w_units) / 2 + 24
+    pad_u = max(abs(wh_units), abs(wv_units)) / 2 + 24
     W = int((maxx - minx + 2 * pad_u) * SCL) + 2
     H = int((maxy - miny + 2 * pad_u) * SCL) + 2
     if max(W, H) > MAX_SIDE:
@@ -124,14 +136,42 @@ def reweight_record(value, w_units):
         d.polygon([to_px(p) for p in c], fill=fill)
     ink = np.array(img) > 127
 
-    r = abs(w_units) / 2 * SCL
-    if r >= 0.5:
-        if w_units > 0:
-            dt = ndimage.distance_transform_edt(~ink)
-            ink = ink | (dt <= r)
+    # Anisotropic morphology via an elliptical structuring distance.
+    # distance_transform_edt(sampling=(sy, sx)) measures distance with the
+    # axes scaled, so a fixed threshold r grows ink by rx along x and ry
+    # along y -> an ellipse with the two radii we want.
+    rx = abs(wh_units) / 2 * SCL
+    ry = abs(wv_units) / 2 * SCL
+
+    def grow(mask, rx, ry, sign):
+        if rx < 0.5 and ry < 0.5:
+            return mask
+        # sampling is distance-per-pixel on each axis; smaller sampling on an
+        # axis = reach further along it. Normalize so the threshold is 1.0.
+        ax = max(rx, 1e-6)
+        ay = max(ry, 1e-6)
+        # when one radius is ~0, keep that axis from spreading by making its
+        # per-pixel distance large relative to the threshold
+        sx = 1.0 / ax if ax >= 0.5 else 1e6
+        sy = 1.0 / ay if ay >= 0.5 else 1e6
+        if sign > 0:
+            dt = ndimage.distance_transform_edt(~mask, sampling=(sy, sx))
+            return mask | (dt <= 1.0)
         else:
-            dt = ndimage.distance_transform_edt(ink)
-            ink = dt > r
+            dt = ndimage.distance_transform_edt(mask, sampling=(sy, sx))
+            return dt > 1.0
+
+    # grow and shrink can differ per axis; apply the positive parts together
+    # and the negative parts together so a mixed request (e.g. wider stems,
+    # thinner bars) works in one pass each.
+    pos_rx = rx if wh_units > 0 else 0.0
+    pos_ry = ry if wv_units > 0 else 0.0
+    neg_rx = rx if wh_units < 0 else 0.0
+    neg_ry = ry if wv_units < 0 else 0.0
+    if pos_rx >= 0.5 or pos_ry >= 0.5:
+        ink = grow(ink, pos_rx, pos_ry, +1)
+    if neg_rx >= 0.5 or neg_ry >= 0.5:
+        ink = grow(ink, neg_rx, neg_ry, -1)
     if not ink.any():
         return value  # thinned to nothing: keep the original
 

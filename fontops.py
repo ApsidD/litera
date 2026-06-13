@@ -123,22 +123,25 @@ def main():
         dx = int(e.get("dx", 0) or 0)
         dy = int(e.get("dy", 0) or 0)
         dadv = int(e.get("dadv", 0) or 0)
-        w = int(e.get("w", 0) or 0)
+        w_legacy = int(e.get("w", 0) or 0)
+        wh = int(e.get("wh", w_legacy) or 0)
+        wv = int(e.get("wv", w_legacy) or 0)
+        reweighted = wh != 0 or wv != 0
 
         base_adv, base_lsb = hmtx[name]
-        new_adv = max(0, otRound(base_adv * kx) + dadv + T + w)
+        # horizontal growth widens the glyph, so the advance follows wh
+        new_adv = max(0, otRound(base_adv * kx) + dadv + T + wh)
 
         glyph = glyf[name]
         has_outline = glyph.numberOfContours != 0
 
-        if has_outline and (kx != 1.0 or ky != 1.0 or dx != 0 or dy != 0 or w != 0):
+        if has_outline and (kx != 1.0 or ky != 1.0 or dx != 0 or dy != 0 or reweighted):
             rec = DecomposingRecordingPen(glyph_set)
             glyph_set[name].draw(rec)
             rec_value = rec.value
-            if w != 0:
+            if reweighted:
                 from reweight import reweight_record
-                rec_value = reweight_record(rec_value, w)
-            if w != 0:
+                rec_value = reweight_record(rec_value, wh, wv)
                 # re-traced outlines are cubic; convert to quadratic for glyf
                 from fontTools.pens.cu2quPen import Cu2QuPen
                 tt = TTGlyphPen(None)
