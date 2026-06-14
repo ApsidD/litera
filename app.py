@@ -414,6 +414,51 @@ async def import_sheet(
     return JSONResponse({"ok": True, "path": out.name, "info": info})
 
 
+# ---------------- glyph weight preview ----------------
+
+@app.post("/api/glyph-preview")
+async def glyph_preview(request: Request):
+    """Render one glyph through the real export geometry (incl. anisotropic
+    reweight) to a transparent PNG, so the zoom view can show a faithful
+    weight preview. Body: {path, glyph, edits}."""
+    if not _authed(request):
+        return _deny()
+    body = await request.json()
+    rel = body.get("path", "")
+    src = _safe_font_path(rel)
+    if not src:
+        return JSONResponse({"error": "path outside allowed folders"}, status_code=400)
+    glyph = str(body.get("glyph", ""))
+    if not glyph or "/" in glyph or ".." in glyph:
+        return JSONResponse({"error": "bad glyph"}, status_code=400)
+    edits = body.get("edits")
+    if not isinstance(edits, dict):
+        return JSONResponse({"error": "no edits"}, status_code=400)
+    ppu = float(body.get("ppu", 0.6) or 0.6)
+    ppu = max(0.1, min(3.0, ppu))
+
+    tmp_edits = EXPORTS_DIR / f"_prev_{secrets.token_hex(4)}.json"
+    tmp_png = EXPORTS_DIR / f"_prev_{secrets.token_hex(4)}.png"
+    tmp_edits.write_text(json.dumps(edits, ensure_ascii=False), encoding="utf-8")
+    try:
+        proc = subprocess.run(
+            [PYTHON, str(BASE_DIR / "glyphprev.py"),
+             "--font", str(src), "--glyph", glyph,
+             "--edits", str(tmp_edits), "--out", str(tmp_png), "--ppu", str(ppu)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode != 0 or not tmp_png.exists():
+            return JSONResponse({"error": "preview failed",
+                                 "detail": (proc.stderr or proc.stdout)[-800:]}, status_code=500)
+        meta = json.loads(proc.stdout.strip().splitlines()[-1])
+        import base64
+        meta["png"] = "data:image/png;base64," + base64.b64encode(tmp_png.read_bytes()).decode()
+        return JSONResponse(meta)
+    finally:
+        tmp_edits.unlink(missing_ok=True)
+        tmp_png.unlink(missing_ok=True)
+
+
 # ---------------- PWA ----------------
 
 @app.get("/manifest.json")

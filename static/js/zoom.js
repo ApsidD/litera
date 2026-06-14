@@ -1,6 +1,6 @@
 // Litera: large view of a glyph or a kerning pair (double click)
 // Glyph: drag with the mouse (horizontal = left bearing, vertical = position). Pair: drag the kerning.
-import { state, glyphEdit, emit, metric } from './state.js';
+import { state, glyphEdit, emit, metric, cleanedEdits } from './state.js';
 import { paramsFor, effAdvance, effKern, kernKey, fillGlyph, setupCanvas, unitBox } from './render.js';
 import { makeScrub, refreshScrubs } from './scrub.js';
 import * as H from './history.js';
@@ -20,6 +20,8 @@ const C = {
 let cv = null;
 let lastS = 1;
 let drag = null; // {x, y, e0} | {x, kern0}
+let wprev = null;  // {glyph, key, img, meta} server-rendered weighted shape
+let wprevBusy = false;
 
 // colored band: green = air, red = overlap/negative
 function band(ctx, xa, xb, top, h) {
@@ -36,6 +38,12 @@ function label(name) {
   const g = state.nameMap[name];
   const ch = g && g.unicode ? String.fromCodePoint(g.unicode) : '';
   return ch && ch !== name ? `${ch} · ${name}` : name;
+}
+
+// signature of the current glyph's edits, to know when a weight preview is stale
+function glyphSig(name) {
+  const e = state.edits.glyphs[name];
+  return name + ':' + JSON.stringify(e || {});
 }
 
 const begin = () => H.capture();
@@ -167,6 +175,36 @@ export function initZoom() {
     done();
   });
 
+  $('zoom-wprev').addEventListener('click', async () => {
+    const g = selGlyph();
+    if (!g || wprevBusy) return;
+    // toggle off if we already show a fresh preview for this exact state
+    if (wprev && wprev.key === glyphSig(g)) { wprev = null; paint(); return; }
+    wprevBusy = true;
+    const btn = $('zoom-wprev');
+    const old = btn.textContent;
+    btn.textContent = t('rendering…');
+    try {
+      const ppu = Math.max(0.15, Math.min(2, lastS || 0.6));
+      const r = await fetch('api/glyph-preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: state.fontPath, glyph: g, edits: cleanedEdits(), ppu }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+      const img = new Image();
+      img.onload = () => { wprev = { key: glyphSig(g), img, meta: data }; paint(); };
+      img.src = data.png;
+    } catch (e) {
+      btn.textContent = t('preview failed');
+      setTimeout(() => { btn.textContent = old; }, 1500);
+      wprevBusy = false;
+      return;
+    }
+    btn.textContent = old;
+    wprevBusy = false;
+  });
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && isOpen()) closeZoom();
   });
@@ -244,7 +282,10 @@ export function zoomChanged(kind) {
   if (!isOpen()) return;
   if (state.sel == null) { closeZoom(); return; }
   if (kind === 'edits' || kind === 'selection' || kind === 'restore') {
-    $('zoom-rows-glyph').style.display = selGlyph() ? '' : 'none';
+    // drop a weight preview that no longer matches the glyph or its edits
+    const g = selGlyph();
+    if (wprev && (!g || wprev.key !== glyphSig(g))) wprev = null;
+    $('zoom-rows-glyph').style.display = g ? '' : 'none';
     $('zoom-rows-pair').style.display = selPair() ? '' : 'none';
     paint();
   }
@@ -331,7 +372,19 @@ function paint() {
       ctx.stroke();
     }
 
-    fillGlyph(ctx, { glyph, name: g, adv, ...pr }, ox, by, s, C.ink);
+    if (wprev && wprev.key === glyphSig(g) && wprev.meta && wprev.meta.ok) {
+      // overlay the real server-rendered weighted shape, aligned by metrics
+      const m = wprev.meta;
+      const scale = s / (m.px_per_unit * (window.devicePixelRatio || 1));
+      const dispW = wprev.img.width * scale;
+      const dispH = wprev.img.height * scale;
+      // PNG left edge = m.x_units (font units from pen), top = m.y_top_units
+      const px = ox + (m.x_units - m.pad_px / m.px_per_unit) * s;
+      const py = by - (m.y_top_units + m.pad_px / m.px_per_unit) * s;
+      ctx.drawImage(wprev.img, px, py, dispW, dispH);
+    } else {
+      fillGlyph(ctx, { glyph, name: g, adv, ...pr }, ox, by, s, C.ink);
+    }
 
     // numbers: bearings and advance
     const b = glyph.path && glyph.path.commands.length ? glyph.path.getBoundingBox() : null;
