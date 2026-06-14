@@ -50,7 +50,31 @@ LOGIN_URL = os.environ.get("LITERA_LOGIN_URL", "/")
 PAIRTEST_FILE = os.environ.get("LITERA_PAIRTEST", "")
 SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 PORT = int(os.environ.get("LITERA_PORT", 8108))
-PYTHON = sys.executable
+
+
+def _pick_python():
+    """Python used for the fontops/glyphprev/sheet2font subprocesses. Prefer the
+    current interpreter, but fall back to one that actually has fontTools (the
+    server may run under a venv that lacks it). Override with LITERA_PYTHON."""
+    forced = os.environ.get("LITERA_PYTHON")
+    if forced:
+        return forced
+    candidates = [sys.executable, "python3",
+                  "/usr/bin/python3", "/usr/local/bin/python3"]
+    for py in candidates:
+        if not py:
+            continue
+        try:
+            r = subprocess.run([py, "-c", "import fontTools, numpy, PIL"],
+                               capture_output=True, timeout=10)
+            if r.returncode == 0:
+                return py
+        except Exception:
+            continue
+    return sys.executable
+
+
+PYTHON = _pick_python()
 
 app = FastAPI(title="Litera")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
