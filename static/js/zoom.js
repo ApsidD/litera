@@ -1,7 +1,7 @@
 // Litera: large view of a glyph or a kerning pair (double click)
 // Glyph: drag with the mouse (horizontal = left bearing, vertical = position). Pair: drag the kerning.
 import { state, glyphEdit, emit, metric } from './state.js';
-import { paramsFor, effAdvance, effKern, kernKey, fillGlyph, setupCanvas } from './render.js';
+import { paramsFor, effAdvance, effKern, kernKey, fillGlyph, setupCanvas, unitBox } from './render.js';
 import { makeScrub, refreshScrubs } from './scrub.js';
 import * as H from './history.js';
 import { t } from './i18n.js';
@@ -41,6 +41,47 @@ function label(name) {
 const begin = () => H.capture();
 const live = () => emit('edits');
 const done = () => { H.commit(); emit('edits'); };
+
+// current LSB/RSB of the selected glyph (in final units), mirrors the side panel
+function curLsbZ() {
+  const n = selGlyph(); const b = unitBox(n);
+  if (!b) return 0;
+  const p = paramsFor(n);
+  return Math.round(b.x1 * p.kx) + p.dx;
+}
+function curRsbZ() {
+  const n = selGlyph(); const b = unitBox(n);
+  if (!b) return 0;
+  const p = paramsFor(n);
+  return effAdvance(state.nameMap[n]) - (Math.round(b.x2 * p.kx) + p.dx);
+}
+
+// a bearing scrub (left or right) built on the glyph's bounding box
+function bearingScrub(parent, lbl, side) {
+  const r = document.createElement('div');
+  r.className = 'row';
+  const lab = document.createElement('label');
+  lab.textContent = lbl;
+  const val = document.createElement('span');
+  r.appendChild(lab); r.appendChild(val);
+  parent.appendChild(r);
+  makeScrub(val, {
+    get: () => (side === 'l' ? curLsbZ() : curRsbZ()),
+    set: v => {
+      const e = glyphEdit(selGlyph(), true);
+      if (side === 'l') {
+        const d = v - curLsbZ();
+        e.dx = (e.dx | 0) + d;
+        e.dadv = (e.dadv | 0) + d;
+      } else {
+        e.dadv = (e.dadv | 0) + (v - curRsbZ());
+      }
+    },
+    step: 0.5, min: -1000, max: 1000, nudge: 1,
+    enabled: () => isOpen() && !!selGlyph() && !!unitBox(selGlyph()),
+    onBegin: begin, onLive: live, onCommit: done,
+  });
+}
 
 function glyphScrub(parent, lbl, key) {
   const r = document.createElement('div');
@@ -88,6 +129,8 @@ export function initZoom() {
   glyphScrub(rg, t('width'), 'sx');
   glyphScrub(rg, t('height'), 'sy');
   glyphScrub(rg, t('shift Y'), 'dy');
+  bearingScrub(rg, t('left bearing'), 'l');
+  bearingScrub(rg, t('right bearing'), 'r');
   glyphScrub(rg, t('weight: horizontal'), 'wh');
   glyphScrub(rg, t('weight: vertical'), 'wv');
 
