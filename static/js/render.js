@@ -94,36 +94,106 @@ export function fillGlyph(ctx, item, ox, oy, s, color) {
     }
     return;
   }
-  ctx.save();
-  ctx.translate(ox, oy);
-  ctx.scale(s, -s);
-  ctx.fillStyle = color;
   const p2d = glyphPath2D(glyph, kx, ky, dx, dy);
-  ctx.fill(p2d);
-  // live weight preview: approximate anisotropic growth by stroking the path
-  // with the pen scaled per axis. wh thickens vertical stems (x-stroke),
-  // wv thickens horizontal bars (y-stroke). Exact geometry is built on export.
   const wh = item.wh | 0, wv = item.wv | 0;
-  if (wh || wv) {
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    // Approximate anisotropy: an oval pen. Stroke with a round pen at the
-    // mean magnitude, anisotropy is shown faithfully on export. Sign handled
-    // per dominant axis; mixed signs fall back to the larger magnitude.
-    const mag = Math.max(Math.abs(wh), Math.abs(wv));
-    const sign = (Math.abs(wh) >= Math.abs(wv) ? wh : wv) >= 0 ? 1 : -1;
-    if (mag) {
-      if (sign < 0) ctx.globalCompositeOperation = 'destination-out';
-      else ctx.strokeStyle = color;
-      // bias the pen oval: wider when wh dominates, taller when wv dominates
-      const rx = Math.max(0.2, Math.abs(wh)) , ry = Math.max(0.2, Math.abs(wv));
-      ctx.save();
-      ctx.lineWidth = Math.max(rx, ry);
-      ctx.stroke(p2d);
-      ctx.restore();
-    }
+
+  // No weight change: straight fill, the common fast path.
+  if (!wh && !wv) {
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(s, -s);
+    ctx.fillStyle = color;
+    ctx.fill(p2d);
+    ctx.restore();
+    return;
   }
-  ctx.restore();
+
+  // Weight preview. Thickening (positive) just fills + strokes in the same
+  // colour, which is clean. Thinning (negative) must erase part of the edge;
+  // a destination-out stroke drawn straight onto the main canvas leaves an
+  // antialiased halo (the translucent outline bug). To avoid it we render the
+  // glyph on an opaque offscreen buffer and snap its alpha to 0/255 before
+  // compositing, so no partial-alpha fringe survives. The buffer is reused.
+  const hasNeg = wh < 0 || wv < 0;
+  if (!hasNeg) {
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(s, -s);
+    ctx.fillStyle = color;
+    ctx.fill(p2d);
+    strokeWeight(ctx, p2d, wh, wv, color);
+    ctx.restore();
+    return;
+  }
+
+  const b = glyph.path.getBoundingBox();
+  const pad = Math.max(Math.abs(wh), Math.abs(wv)) * s + 4;
+  const xa = ox + b.x1 * kx * s, xb = ox + b.x2 * kx * s;
+  const ya = oy - b.y2 * ky * s, yb = oy - b.y1 * ky * s;
+  const left = Math.floor(Math.min(xa, xb) - pad);
+  const top = Math.floor(Math.min(ya, yb) - pad);
+  const bw = Math.ceil(Math.max(xa, xb) + pad) - left;
+  const bh = Math.ceil(Math.max(ya, yb) + pad) - top;
+  if (bw <= 0 || bh <= 0 || bw > 3000 || bh > 3000) {
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(s, -s);
+    ctx.fillStyle = color;
+    ctx.fill(p2d);
+    ctx.restore();
+    return;
+  }
+
+  const c = weightCtx(bw, bh);
+  c.save();
+  c.translate(ox - left, oy - top);
+  c.scale(s, -s);
+  c.fillStyle = color;
+  c.fill(p2d);
+  strokeWeight(c, p2d, wh, wv, color);
+  c.restore();
+
+  const cn = c.canvas;
+  const img = c.getImageData(0, 0, cn.width, cn.height);
+  const d = img.data;
+  for (let i = 3; i < d.length; i += 4) d[i] = d[i] >= 150 ? 255 : 0;
+  c.putImageData(img, 0, 0);
+  ctx.drawImage(cn, left, top);
+}
+
+// Stroke a glyph path to add/remove weight. Positive = same-colour stroke
+// (thicker), negative = destination-out (thinner). Anisotropy is approximated
+// by stroking each axis with a pen squashed on the perpendicular axis.
+function strokeWeight(c, p2d, wh, wv, color) {
+  c.lineJoin = 'round';
+  c.lineCap = 'round';
+  const oneStroke = (amount, sxScale, syScale) => {
+    if (!amount) return;
+    c.save();
+    if (amount < 0) c.globalCompositeOperation = 'destination-out';
+    else c.strokeStyle = color;
+    c.scale(sxScale, syScale);
+    c.lineWidth = Math.abs(amount) / Math.max(sxScale, syScale);
+    c.stroke(p2d);
+    c.restore();
+  };
+  if (wh === wv) {
+    oneStroke(wh, 1, 1);                 // isotropic round pen
+  } else {
+    if (wh) oneStroke(wh, 1, 0.2);       // grow stems: wide, short pen
+    if (wv) oneStroke(wv, 0.2, 1);       // grow bars: narrow, tall pen
+  }
+}
+
+let _wc = null;
+function weightCtx(w, h) {
+  if (!_wc) _wc = document.createElement('canvas').getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  _wc.canvas.width = Math.round(w * dpr);
+  _wc.canvas.height = Math.round(h * dpr);
+  _wc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  _wc.clearRect(0, 0, w, h);
+  return _wc;
 }
 
 // Estimated stroke thickness in units: 2 * |net area| / outline length.
