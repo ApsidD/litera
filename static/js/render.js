@@ -1,5 +1,6 @@
 // Litera: geometry — glyph parameters, line layout, Path2D
 import { state, glyphEdit, gscale } from './state.js';
+import { weightedRaster } from './weight.js';
 
 const boxCache = new Map(); // name -> {x1,y1,x2,y2} | null (in units, without edits)
 
@@ -94,10 +95,24 @@ export function fillGlyph(ctx, item, ox, oy, s, color) {
     }
     return;
   }
-  // Weight (wh/wv) is NOT simulated here: stroking the outline to fake weight
-  // breaks on complex contours (serifs, thin strokes) and leaves ghost lines.
-  // The real, anisotropic geometry is produced on export; the zoom view offers
-  // an on-demand server preview that runs the exact same engine.
+  const wh = item.wh | 0, wv = item.wv | 0;
+  if (wh || wv) {
+    // Live weight: rebuild the glyph as a raster with the same anisotropic
+    // morphology as export (grow stems for wh, bars for wv) and blit it. This
+    // is the real shape, updating every frame — not a stroke approximation.
+    const rast = weightedRaster(glyph, kx, ky, wh, wv, name, color);
+    if (rast) {
+      const sc = s / rast.res;
+      const left = ox + (rast.minx + dx) * s;
+      const top = oy - (rast.maxy + dy) * s;
+      const prevSmooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(rast.canvas, left, top, rast.canvas.width * sc, rast.canvas.height * sc);
+      ctx.imageSmoothingEnabled = prevSmooth;
+      return;
+    }
+  }
   ctx.save();
   ctx.translate(ox, oy);
   ctx.scale(s, -s);
