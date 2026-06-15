@@ -579,3 +579,6 @@ body.modal-open { overflow: hidden; }
 /* weight sync buttons */
 .wsync { margin-top: 8px; }
 .wsync-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+/* kerning list collapse toggle */
+.kern-toggle { width: 100%; margin-top: 4px; text-align: center; }

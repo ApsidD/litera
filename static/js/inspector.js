@@ -7,6 +7,8 @@ import { t } from './i18n.js';
 
 const $ = id => document.getElementById(id);
 let widthEl = null;
+let kernExpanded = false;
+const KERN_COLLAPSED = 5;
 
 function row(parent, label) {
   const r = document.createElement('div');
@@ -260,11 +262,22 @@ export function refreshInspector() {
     widthEl.textContent = n && state.nameMap[n] ? String(effAdvance(state.nameMap[n])) : '·';
   }
 
-  // pair list
+  // pair list — collapsed to the first few, with a toggle to show all
   const list = $('kern-list');
   list.innerHTML = '';
   const keys = Object.keys(state.edits.kerning).sort();
-  for (const key of keys) {
+  // always keep the selected pair visible even when collapsed
+  const selKey = p ? kernKey(p.left, p.right) : null;
+  let shown = keys;
+  let hiddenCount = 0;
+  if (!kernExpanded && keys.length > KERN_COLLAPSED) {
+    shown = keys.slice(0, KERN_COLLAPSED);
+    if (selKey && keys.includes(selKey) && !shown.includes(selKey)) {
+      shown = shown.slice(0, KERN_COLLAPSED - 1).concat(selKey);
+    }
+    hiddenCount = keys.length - shown.length;
+  }
+  for (const key of shown) {
     const [l, r] = key.split(' ');
     const item = document.createElement('div');
     item.className = 'kern-item' + (p && p.left === l && p.right === r ? ' sel' : '');
@@ -288,6 +301,15 @@ export function refreshInspector() {
       emit('selection');
     });
     list.appendChild(item);
+  }
+  if (keys.length > KERN_COLLAPSED) {
+    const toggle = document.createElement('button');
+    toggle.className = 'kern-toggle mini';
+    toggle.textContent = kernExpanded
+      ? t('collapse')
+      : t('show all') + ' (' + keys.length + ')';
+    toggle.addEventListener('click', () => { kernExpanded = !kernExpanded; refreshInspector(); });
+    list.appendChild(toggle);
   }
   refreshScrubs();
 }

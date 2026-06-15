@@ -45,6 +45,8 @@ const RU = {
   'lowercase': 'строчные',
   'all glyphs': 'все глифы',
   'remove pair': 'убрать пару',
+  'show all': 'показать все',
+  'collapse': 'свернуть',
   'remove line': 'убрать строку',
   'pair test is empty': 'тест пар не найден или пуст',
   'drag the letter: horizontal = left bearing, vertical = vertical position · Alt = finer':
